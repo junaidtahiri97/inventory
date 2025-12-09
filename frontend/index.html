@@ -2,8 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Order Management</title>
-
+  <title>Order Management System</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     table { border-collapse: collapse; width: 100%; margin-top: 20px; }
@@ -16,6 +15,7 @@
   </style>
 </head>
 <body>
+
   <h2>Order Management System</h2>
 
   <div id="loginDiv">
@@ -29,7 +29,7 @@
   <div id="ordersDiv">
     <h3>Add New Order</h3>
     <input type="text" id="newDesign" placeholder="Design Name" />
-    <input type="number" id="newStock" placeholder="Stock Ordered" />
+    <input type="number" id="newStock" placeholder="Stock Arrived" />
     <button id="addOrderBtn">Add Order</button>
     <p id="addStatus"></p>
 
@@ -39,8 +39,8 @@
         <tr>
           <th>ID</th>
           <th>Design</th>
-          <th>Stock Ordered</th>
-          <th>Stock Delivered</th>
+          <th>Stock Arrived</th>
+          <th>Stock Despatched</th>
           <th>Stock Left</th>
         </tr>
       </thead>
@@ -50,25 +50,57 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.36.0"></script>
-  <script>
-    const { createClient } = supabase;
-    const supabaseClient = createClient(
-     "https://iefldtmgaeatngacmyhc.supabase.co",
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllZmxkdG1nYWVhdG5nYWNteWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxMzc0MzAsImV4cCI6MjA4MDcxMzQzMH0.D6GyEfLVB14ql-FyoCMdw0_MrckvlCcFWBodWSRfr4Y"
-    );
+  <script src="./config.js"></script>
 
+  <script>
     const loginDiv = document.getElementById("loginDiv");
     const ordersDiv = document.getElementById("ordersDiv");
     const loginStatus = document.getElementById("loginStatus");
     const ordersTbody = document.getElementById("ordersTbody");
     const addStatus = document.getElementById("addStatus");
 
+    async function fetchOrders() {
+      const { data, error } = await supabaseClient
+        .from("orders")
+        .select("*")
+        .order("id", { ascending: true });
+
+      if (error) {
+        ordersTbody.innerHTML = `<tr><td colspan="5">Error: ${error.message}</td></tr>`;
+        return;
+      }
+
+      if (data.length === 0) {
+        ordersTbody.innerHTML = `<tr><td colspan="5">No orders found</td></tr>`;
+        return;
+      }
+
+      ordersTbody.innerHTML = "";
+      data.forEach(o => {
+        const despatched = o.stock_despatched || 0;
+        const left = o.stock_arrived - despatched;
+        const designName = o.design || "N/A";
+
+        ordersTbody.innerHTML += `
+          <tr>
+            <td><a href="order.html?id=${o.id}">${o.id}</a></td>
+            <td><a href="order.html?id=${o.id}">${designName}</a></td>
+            <td>${o.stock_arrived}</td>
+            <td>${despatched}</td>
+            <td>${left}</td>
+          </tr>
+        `;
+      });
+    }
+
     document.getElementById("loginBtn").addEventListener("click", async () => {
       const email = document.getElementById("email").value;
       const password = document.getElementById("password").value;
+
       loginStatus.innerText = "Logging in...";
       const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-      if(error) {
+
+      if (error) {
         loginStatus.innerText = "❌ Login failed: " + error.message;
       } else {
         loginStatus.innerText = "✅ Logged in!";
@@ -85,46 +117,20 @@
       loginStatus.innerText = "";
     });
 
-    async function fetchOrders() {
-      const { data, error } = await supabaseClient
-        .from("orders")
-        .select("*")
-        .order("id", { ascending: true });
-      if(error) {
-        ordersTbody.innerHTML = `<tr><td colspan="5">Error: ${error.message}</td></tr>`;
-        return;
-      }
-      if(data.length === 0) {
-        ordersTbody.innerHTML = `<tr><td colspan="5">No orders found</td></tr>`;
-        return;
-      }
-      ordersTbody.innerHTML = "";
-      data.forEach(o => {
-        const stockDelivered = o.stock_delivered || 0;
-        const stockLeft = o.stock_ordered - stockDelivered;
-        const designName = o.design || "N/A";
-        ordersTbody.innerHTML += `
-          <tr>
-            <td><a onclick="viewOrder(${o.id})">${o.id}</a></td>
-            <td><a onclick="viewOrder(${o.id})">${designName}</a></td>
-            <td>${o.stock_ordered}</td>
-            <td>${stockDelivered}</td>
-            <td>${stockLeft}</td>
-          </tr>`;
-      });
-    }
-
     document.getElementById("addOrderBtn").addEventListener("click", async () => {
       const design = document.getElementById("newDesign").value.trim();
       const stock = parseInt(document.getElementById("newStock").value);
-      if(!design || isNaN(stock) || stock <= 0) {
+
+      if (!design || isNaN(stock) || stock <= 0) {
         addStatus.innerText = "❌ Enter valid design and stock.";
         return;
       }
-      const { data, error } = await supabaseClient.from("orders").insert([
-        { design: design, stock_ordered: stock, stock_delivered: 0 }
-      ]);
-      if(error) {
+
+      const { data, error } = await supabaseClient
+        .from("orders")
+        .insert([{ design: design, stock_arrived: stock, stock_despatched: 0 }]);
+
+      if (error) {
         addStatus.innerText = "❌ Error adding order: " + error.message;
       } else {
         addStatus.innerText = "✅ Order added!";
@@ -134,18 +140,17 @@
       }
     });
 
-    function viewOrder(orderId) {
-      window.location.href = `order.html?id=${orderId}`;
-    }
-
     window.addEventListener("load", async () => {
       const sessionData = await supabaseClient.auth.getSession();
-      if(sessionData.data.session) {
+      if (sessionData.data.session) {
         loginDiv.style.display = "none";
         ordersDiv.style.display = "block";
         fetchOrders();
       }
     });
+
+    // Auto-refresh every 5 seconds to reflect updated stock from order.html
+    setInterval(fetchOrders, 5000);
   </script>
 </body>
 </html>

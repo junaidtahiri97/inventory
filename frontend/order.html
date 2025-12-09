@@ -11,13 +11,16 @@
     table { width: 100%; border-collapse: collapse; margin-top: 15px; }
     th, td { border: 1px solid #ccc; padding: 8px; }
     th { background: #eee; }
+    a { color: blue; text-decoration: underline; cursor: pointer; }
+    a:hover { color: darkblue; }
   </style>
 </head>
 <body>
 
   <h2>Order Details</h2>
 
-  <button onclick="window.location.href='index.html'">Return to Orders</button>
+  <!-- RETURN BUTTON -->
+  <button id="returnBtn">← Return to Orders</button>
 
   <!-- ORDER INFO -->
   <div id="orderInfo" class="box">
@@ -31,8 +34,8 @@
     <label>Customer Name</label>
     <input type="text" id="customerName" placeholder="Enter customer name">
 
-    <label>Quantity Delivered</label>
-    <input type="number" id="deliveredQty">
+    <label>Quantity Despatched</label>
+    <input type="number" id="despatchedQty">
 
     <button id="addDeliveryBtn">Add Delivery</button>
     <p id="status"></p>
@@ -56,23 +59,26 @@
     </table>
   </div>
 
-  <!-- Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.36.0"></script>
-  <script> 
-  const { createClient } = supabase;
-    const supabaseClient = createClient(
-     "https://iefldtmgaeatngacmyhc.supabase.co",
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllZmxkdG1nYWVhdG5nYWNteWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxMzc0MzAsImV4cCI6MjA4MDcxMzQzMH0.D6GyEfLVB14ql-FyoCMdw0_MrckvlCcFWBodWSRfr4Y"
-    );
-    </script>
+  <script src="./config.js"></script>
 
   <script>
     const orderInfoDiv = document.getElementById("orderInfo");
     const statusDiv = document.getElementById("status");
     const deliveryBody = document.getElementById("deliveryTableBody");
+    const returnBtn = document.getElementById("returnBtn");
 
     const params = new URLSearchParams(window.location.search);
-    const orderId = params.get("id");
+    const orderId = parseInt(params.get("id"));
+
+    if (!orderId || isNaN(orderId)) {
+      orderInfoDiv.innerHTML = "❌ Invalid order ID. Please open from Orders page.";
+      throw new Error("Invalid order ID");
+    }
+
+    returnBtn.addEventListener("click", () => {
+      window.location.href = "index.html";
+    });
 
     async function loadOrder() {
       const { data, error } = await supabaseClient
@@ -86,14 +92,14 @@
         return;
       }
 
-      const delivered = data.stock_delivered || 0;
-      const left = data.stock_ordered - delivered;
+      const despatched = data.stock_despatched || 0;
+      const left = data.stock_arrived - despatched;
 
       orderInfoDiv.innerHTML = `
         <p><strong>ID:</strong> ${data.id}</p>
         <p><strong>Design:</strong> ${data.design}</p>
-        <p><strong>Stock Ordered:</strong> ${data.stock_ordered}</p>
-        <p><strong>Stock Delivered:</strong> ${delivered}</p>
+        <p><strong>Stock Arrived:</strong> ${data.stock_arrived}</p>
+        <p><strong>Stock Despatched:</strong> ${despatched}</p>
         <p><strong>Stock Left:</strong> ${left}</p>
       `;
     }
@@ -130,7 +136,7 @@
     }
 
     document.getElementById("addDeliveryBtn").addEventListener("click", async () => {
-      const qty = parseInt(document.getElementById("deliveredQty").value);
+      const qty = parseInt(document.getElementById("despatchedQty").value);
       const customerName = document.getElementById("customerName").value.trim();
 
       if (!customerName) {
@@ -140,7 +146,7 @@
       }
 
       if (!qty || qty <= 0) {
-        statusDiv.innerText = "Enter a valid delivery quantity.";
+        statusDiv.innerText = "Enter a valid despatched quantity.";
         statusDiv.style.color = "red";
         return;
       }
@@ -158,16 +164,16 @@
         return;
       }
 
-      const updatedDelivered = (order.stock_delivered || 0) + qty;
+      const updatedDespatched = (order.stock_despatched || 0) + qty;
 
       // Update main stock
       const { error: updateError } = await supabaseClient
         .from("orders")
-        .update({ stock_delivered: updatedDelivered })
+        .update({ stock_despatched: updatedDespatched })
         .eq("id", orderId);
 
       if (updateError) {
-        statusDiv.innerText = "Error updating main stock: " + updateError.message;
+        statusDiv.innerText = "Error updating stock: " + updateError.message;
         statusDiv.style.color = "red";
         return;
       }
@@ -194,7 +200,7 @@
       statusDiv.style.color = "green";
 
       document.getElementById("customerName").value = "";
-      document.getElementById("deliveredQty").value = "";
+      document.getElementById("despatchedQty").value = "";
 
       loadOrder();
       loadDeliveries();

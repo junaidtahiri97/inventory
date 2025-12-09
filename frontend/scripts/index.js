@@ -24,7 +24,7 @@ ordersTbody.innerHTML += `
 <td><a onclick="viewOrder(${o.id})">${o.id}</a></td>
 <td>${o.design}</td>
 <td>${o.stock_ordered}</td>
-<td>${o.stock_delivered}</td>
+<td>${o.stock_despatched}</td>
 <td>${o.stock_left}</td>
 </tr>`;
 });
@@ -57,7 +57,7 @@ const qty = document.getElementById("newStock").value;
 const { error } = await client.from("orders").insert({
 design,
 stock_ordered: qty,
-stock_delivered: 0,
+stock_despatched: 0,
 stock_left: qty
 });
 

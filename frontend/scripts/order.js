@@ -11,7 +11,7 @@ const { data } = await client.from("orders").select("*").eq("id", orderId).singl
 document.getElementById("orderInfo").innerHTML = `
 <p><strong>Design:</strong> ${data.design}</p>
 <p><strong>Ordered:</strong> ${data.stock_ordered}</p>
-<p><strong>Delivered:</strong> ${data.stock_delivered}</p>
+<p><strong>Delivered:</strong> ${data.stock_despatched}</p>
 <p><strong>Left:</strong> ${data.stock_left}</p>
 `;
 }
