@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Order Details</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    input, button { padding: 8px; margin: 6px 0; }
+    label { display: block; margin-top: 10px; }
+    .box { border: 1px solid #ccc; padding: 15px; margin-top: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th, td { border: 1px solid #ccc; padding: 8px; }
+    th { background: #eee; }
+  </style>
+</head>
+<body>
+
+  <h2>Order Details</h2>
+
+  <button onclick="window.location.href='index.html'">Return to Orders</button>
+
+  <!-- ORDER INFO -->
+  <div id="orderInfo" class="box">
+    Loading order...
+  </div>
+
+  <!-- ADD DELIVERY -->
+  <div class="box">
+    <h3>Add Delivery</h3>
+
+    <label>Customer Name</label>
+    <input type="text" id="customerName" placeholder="Enter customer name">
+
+    <label>Quantity Delivered</label>
+    <input type="number" id="deliveredQty">
+
+    <button id="addDeliveryBtn">Add Delivery</button>
+    <p id="status"></p>
+  </div>
+
+  <!-- DELIVERY HISTORY -->
+  <div class="box">
+    <h3>Delivery History</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Customer</th>
+          <th>Quantity</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody id="deliveryTableBody">
+        <tr><td colspan="4">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.36.0"></script>
+  <script> 
+  const { createClient } = supabase;
+    const supabaseClient = createClient(
+     "https://iefldtmgaeatngacmyhc.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllZmxkdG1nYWVhdG5nYWNteWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxMzc0MzAsImV4cCI6MjA4MDcxMzQzMH0.D6GyEfLVB14ql-FyoCMdw0_MrckvlCcFWBodWSRfr4Y"
+    );
+    </script>
+
+  <script>
+    const orderInfoDiv = document.getElementById("orderInfo");
+    const statusDiv = document.getElementById("status");
+    const deliveryBody = document.getElementById("deliveryTableBody");
+
+    const params = new URLSearchParams(window.location.search);
+    const orderId = params.get("id");
+
+    async function loadOrder() {
+      const { data, error } = await supabaseClient
+        .from("orders")
+        .select("*")
+        .eq("id", orderId)
+        .single();
+
+      if (error) {
+        orderInfoDiv.innerHTML = "Error loading order: " + error.message;
+        return;
+      }
+
+      const delivered = data.stock_delivered || 0;
+      const left = data.stock_ordered - delivered;
+
+      orderInfoDiv.innerHTML = `
+        <p><strong>ID:</strong> ${data.id}</p>
+        <p><strong>Design:</strong> ${data.design}</p>
+        <p><strong>Stock Ordered:</strong> ${data.stock_ordered}</p>
+        <p><strong>Stock Delivered:</strong> ${delivered}</p>
+        <p><strong>Stock Left:</strong> ${left}</p>
+      `;
+    }
+
+    async function loadDeliveries() {
+      const { data, error } = await supabaseClient
+        .from("deliveries")
+        .select("*")
+        .eq("order_id", orderId)
+        .order("id", { ascending: true });
+
+      if (error) {
+        deliveryBody.innerHTML = `<tr><td colspan="4">Error loading deliveries</td></tr>`;
+        return;
+      }
+
+      if (!data.length) {
+        deliveryBody.innerHTML = `<tr><td colspan="4">No deliveries yet</td></tr>`;
+        return;
+      }
+
+      deliveryBody.innerHTML = "";
+
+      data.forEach(d => {
+        deliveryBody.innerHTML += `
+          <tr>
+            <td>${d.id}</td>
+            <td>${d.customer_name}</td>
+            <td>${d.quantity}</td>
+            <td>${new Date(d.delivery_date).toLocaleString()}</td>
+          </tr>
+        `;
+      });
+    }
+
+    document.getElementById("addDeliveryBtn").addEventListener("click", async () => {
+      const qty = parseInt(document.getElementById("deliveredQty").value);
+      const customerName = document.getElementById("customerName").value.trim();
+
+      if (!customerName) {
+        statusDiv.innerText = "Customer name required.";
+        statusDiv.style.color = "red";
+        return;
+      }
+
+      if (!qty || qty <= 0) {
+        statusDiv.innerText = "Enter a valid delivery quantity.";
+        statusDiv.style.color = "red";
+        return;
+      }
+
+      // Fetch existing order
+      const { data: order, error: orderError } = await supabaseClient
+        .from("orders")
+        .select("*")
+        .eq("id", orderId)
+        .single();
+
+      if (orderError) {
+        statusDiv.innerText = "Error fetching order: " + orderError.message;
+        statusDiv.style.color = "red";
+        return;
+      }
+
+      const updatedDelivered = (order.stock_delivered || 0) + qty;
+
+      // Update main stock
+      const { error: updateError } = await supabaseClient
+        .from("orders")
+        .update({ stock_delivered: updatedDelivered })
+        .eq("id", orderId);
+
+      if (updateError) {
+        statusDiv.innerText = "Error updating main stock: " + updateError.message;
+        statusDiv.style.color = "red";
+        return;
+      }
+
+      // Insert delivery record
+      const { error: insertError } = await supabaseClient
+        .from("deliveries")
+        .insert([
+          {
+            order_id: orderId,
+            quantity: qty,
+            customer_name: customerName,
+            delivery_date: new Date().toISOString()
+          }
+        ]);
+
+      if (insertError) {
+        statusDiv.innerText = "Error inserting delivery: " + insertError.message;
+        statusDiv.style.color = "red";
+        return;
+      }
+
+      statusDiv.innerText = "Delivery added successfully!";
+      statusDiv.style.color = "green";
+
+      document.getElementById("customerName").value = "";
+      document.getElementById("deliveredQty").value = "";
+
+      loadOrder();
+      loadDeliveries();
+    });
+
+    loadOrder();
+    loadDeliveries();
+  </script>
+
+</body>
+</html>
